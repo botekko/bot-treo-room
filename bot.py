@@ -1,38 +1,51 @@
 import os
-import threading
 import asyncio
 import discord
-from discord.ext import commands
-from flask import Flask
+import traceback
+from discord.ext import commands, tasks
 
-# ===== Flask fake server (để Render khỏi kill) =====
-app = Flask(__name__)
+# ===== TOKEN =====
+TOKEN = os.getenv("DISCORD_TOKEN")  # Render / VPS
+# TOKEN = "PASTE_TOKEN_HERE"        # Test local
 
-@app.route("/")
-def home():
-    return "Bot is alive", 200
-
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-# ===== Discord bot =====
-TOKEN = os.getenv("DISCORD_TOKEN")
-
+# ===== INTENTS =====
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
+intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents,
+    heartbeat_timeout=60,
+    reconnect=True
+)
 
+# ===== STATUS LIST =====
+statuses = [
+    discord.Game("24/7 Online"),
+    discord.Activity(type=discord.ActivityType.watching, name="the server"),
+    discord.Game("AFK Bot"),
+    discord.Activity(type=discord.ActivityType.listening, name="nothing"),
+]
+
+# ===== READY =====
 @bot.event
 async def on_ready():
+    print(f"[ONLINE] {bot.user}")
+    if not change_status.is_running():
+        change_status.start()
+
+# ===== STATUS LOOP =====
+@tasks.loop(minutes=5)
+async def change_status():
+    activity = statuses[change_status.current_loop % len(statuses)]
     await bot.change_presence(
         status=discord.Status.online,
-        activity=discord.Game("24/7 Online")
+        activity=activity
     )
-    print(f"[ONLINE] {bot.user}")
 
+# ===== JOIN VOICE =====
 @bot.command()
 async def join(ctx):
     if ctx.author.voice is None:
@@ -40,6 +53,7 @@ async def join(ctx):
         return
 
     channel = ctx.author.voice.channel
+
     if ctx.voice_client:
         await ctx.voice_client.move_to(channel)
     else:
@@ -47,14 +61,21 @@ async def join(ctx):
 
     await ctx.send(f"✅ Bot đã vào phòng **{channel.name}**")
 
-async def start_bot():
+# ===== LEAVE VOICE =====
+@bot.command()
+async def leave(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        await ctx.send("👋 Bot đã rời voice")
+
+# ===== AUTO RESTART KHI CRASH =====
+async def main():
     while True:
         try:
             await bot.start(TOKEN)
         except Exception as e:
-            print("[RECONNECT]", e)
-            await asyncio.sleep(10)
+            print("❌ BOT CRASH:", e)
+            traceback.print_exc()
+            await asyncio.sleep(5)
 
-# ===== Chạy song song =====
-threading.Thread(target=run_web).start()
-asyncio.run(start_bot())
+asyncio.run(main())
