@@ -3,40 +3,44 @@ import asyncio
 import discord
 import traceback
 from discord.ext import commands, tasks
+from discord import app_commands
 
-# ===== TOKEN =====
-TOKEN = os.getenv("DISCORD_TOKEN")  # Render / VPS
-# TOKEN = "PASTE_TOKEN_HERE"        # Test local
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ===== INTENTS =====
 intents = discord.Intents.default()
-intents.message_content = True
 intents.voice_states = True
 intents.guilds = True
 
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents,
-    heartbeat_timeout=60,
-    reconnect=True
-)
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+            heartbeat_timeout=60,
+            reconnect=True
+        )
 
-# ===== STATUS LIST =====
+    async def setup_hook(self):
+        # Sync slash commands
+        await self.tree.sync()
+        print("✅ Slash commands synced")
+
+bot = MyBot()
+
+# ===== STATUS =====
 statuses = [
     discord.Game("24/7 Online"),
     discord.Activity(type=discord.ActivityType.watching, name="the server"),
-    discord.Game("AFK Bot"),
     discord.Activity(type=discord.ActivityType.listening, name="nothing"),
 ]
 
-# ===== READY =====
 @bot.event
 async def on_ready():
     print(f"[ONLINE] {bot.user}")
     if not change_status.is_running():
         change_status.start()
 
-# ===== STATUS LOOP =====
 @tasks.loop(minutes=5)
 async def change_status():
     activity = statuses[change_status.current_loop % len(statuses)]
@@ -45,30 +49,43 @@ async def change_status():
         activity=activity
     )
 
-# ===== JOIN VOICE =====
-@bot.command()
-async def join(ctx):
-    if ctx.author.voice is None:
-        await ctx.send("❌ Bạn chưa ở trong phòng voice")
+# ===== SLASH COMMAND: /join =====
+@bot.tree.command(name="join", description="Gọi bot vào phòng voice của bạn")
+async def join(interaction: discord.Interaction):
+    user = interaction.user
+
+    if not user.voice:
+        await interaction.response.send_message(
+            "❌ Bạn chưa ở trong phòng voice",
+            ephemeral=True
+        )
         return
 
-    channel = ctx.author.voice.channel
+    channel = user.voice.channel
 
-    if ctx.voice_client:
-        await ctx.voice_client.move_to(channel)
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.move_to(channel)
     else:
         await channel.connect()
 
-    await ctx.send(f"✅ Bot đã vào phòng **{channel.name}**")
+    await interaction.response.send_message(
+        f"✅ Bot đã vào phòng **{channel.name}**"
+    )
 
-# ===== LEAVE VOICE =====
-@bot.command()
-async def leave(ctx):
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        await ctx.send("👋 Bot đã rời voice")
+# ===== SLASH COMMAND: /leave =====
+@bot.tree.command(name="leave", description="Cho bot rời phòng voice")
+async def leave(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if vc:
+        await vc.disconnect()
+        await interaction.response.send_message("👋 Bot đã rời voice")
+    else:
+        await interaction.response.send_message(
+            "❌ Bot chưa ở trong voice",
+            ephemeral=True
+        )
 
-# ===== AUTO RESTART KHI CRASH =====
+# ===== AUTO RESTART =====
 async def main():
     while True:
         try:
