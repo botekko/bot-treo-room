@@ -1,8 +1,22 @@
 import os
+import threading
 import asyncio
 import discord
 from discord.ext import commands
+from flask import Flask
 
+# ===== Flask fake server (để Render khỏi kill) =====
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is alive", 200
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# ===== Discord bot =====
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
@@ -33,7 +47,7 @@ async def join(ctx):
 
     await ctx.send(f"✅ Bot đã vào phòng **{channel.name}**")
 
-async def runner():
+async def start_bot():
     while True:
         try:
             await bot.start(TOKEN)
@@ -41,4 +55,6 @@ async def runner():
             print("[RECONNECT]", e)
             await asyncio.sleep(10)
 
-asyncio.run(runner())
+# ===== Chạy song song =====
+threading.Thread(target=run_web).start()
+asyncio.run(start_bot())
