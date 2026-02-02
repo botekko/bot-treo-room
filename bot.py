@@ -26,7 +26,6 @@ async def join(ctx):
         return
 
     channel = ctx.author.voice.channel
-
     if ctx.voice_client:
         await ctx.voice_client.move_to(channel)
     else:
