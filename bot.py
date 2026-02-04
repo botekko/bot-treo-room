@@ -20,10 +20,11 @@ threading.Thread(target=run_flask, daemon=True).start()
 # ================= Discord Bot =================
 intents = discord.Intents.none()
 intents.voice_states = True
+intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Nhớ phòng voice để auto rejoin
+# Lưu phòng để auto rejoin
 AUTO_REJOIN_CHANNEL_ID = None
 
 # ================= Events =================
@@ -45,7 +46,7 @@ async def join(interaction: discord.Interaction):
         return
 
     channel = interaction.user.voice.channel
-    AUTO_REJOIN_CHANNEL_ID = channel.id  # nhớ phòng này
+    AUTO_REJOIN_CHANNEL_ID = channel.id
 
     vc = interaction.guild.voice_client
 
@@ -72,7 +73,7 @@ async def out(interaction: discord.Interaction):
     global AUTO_REJOIN_CHANNEL_ID
 
     vc = interaction.guild.voice_client
-    AUTO_REJOIN_CHANNEL_ID = None  # tắt auto rejoin
+    AUTO_REJOIN_CHANNEL_ID = None
 
     if vc:
         await vc.disconnect(force=True)
@@ -89,11 +90,10 @@ async def out(interaction: discord.Interaction):
 # ================= Auto rejoin khi bị kick =================
 @bot.event
 async def on_voice_state_update(member, before, after):
-    # Chỉ xử lý cho chính bot
     if not bot.user or member.id != bot.user.id:
         return
 
-    # Nếu bot bị out khỏi voice
+    # Bot bị kick / out khỏi voice
     if before.channel and after.channel is None:
         if AUTO_REJOIN_CHANNEL_ID:
             channel = bot.get_channel(AUTO_REJOIN_CHANNEL_ID)
@@ -105,9 +105,9 @@ async def on_voice_state_update(member, before, after):
                     print("❌ Auto rejoin thất bại:", e)
 
 # ================= Run Bot =================
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("TOKEN_DISCORD_BOT")
 
 if not TOKEN:
-    raise RuntimeError("❌ TOKEN chưa được set trong Environment Variables!")
+    raise RuntimeError("❌ TOKEN_DISCORD_BOT chưa được set trong Environment Variables!")
 
 bot.run(TOKEN)
