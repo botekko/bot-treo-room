@@ -1,10 +1,15 @@
-import discord
-from discord.ext import commands
 import os
 import threading
+import discord
+from discord.ext import commands
 from flask import Flask
 
-# ================= Flask (giữ bot online trên Render) =================
+# ===================== ENV =====================
+TOKEN = os.getenv("TOKEN_DISCORD_BOT")  # ĐÚNG với Render
+if not TOKEN:
+    raise RuntimeError("❌ Chưa set TOKEN_DISCORD_BOT trong Render Environment")
+
+# ===================== Flask keep-alive =====================
 app = Flask(__name__)
 
 @app.route("/")
@@ -17,30 +22,34 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# ================= Discord Bot =================
-intents = discord.Intents.none()
+# ===================== Discord intents =====================
+intents = discord.Intents.default()
 intents.voice_states = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Lưu phòng để auto rejoin
-AUTO_REJOIN_CHANNEL_ID = None
+# ===================== Auto rejoin =====================
+AUTO_REJOIN_CHANNEL_ID: int | None = None
 
-# ================= Events =================
+# ===================== Events =====================
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    try:
+        await bot.tree.sync()
+    except Exception as e:
+        print("Slash sync error:", e)
+
     print(f"✅ Bot online: {bot.user}")
 
-# ================= Slash command: /join =================
+# ===================== /join =====================
 @bot.tree.command(name="join", description="Gọi bot vào phòng voice của bạn")
 async def join(interaction: discord.Interaction):
     global AUTO_REJOIN_CHANNEL_ID
 
     if not interaction.user.voice:
         await interaction.response.send_message(
-            "❌ Bạn phải vào phòng voice trước",
+            "❌ Bạn phải vào voice trước",
             ephemeral=True
         )
         return
@@ -67,7 +76,7 @@ async def join(interaction: discord.Interaction):
         ephemeral=True
     )
 
-# ================= Slash command: /out =================
+# ===================== /out =====================
 @bot.tree.command(name="out", description="Cho bot rời phòng voice")
 async def out(interaction: discord.Interaction):
     global AUTO_REJOIN_CHANNEL_ID
@@ -87,27 +96,21 @@ async def out(interaction: discord.Interaction):
             ephemeral=True
         )
 
-# ================= Auto rejoin khi bị kick =================
+# ===================== Auto rejoin khi bị kick =====================
 @bot.event
 async def on_voice_state_update(member, before, after):
     if not bot.user or member.id != bot.user.id:
         return
 
-    # Bot bị kick / out khỏi voice
     if before.channel and after.channel is None:
         if AUTO_REJOIN_CHANNEL_ID:
             channel = bot.get_channel(AUTO_REJOIN_CHANNEL_ID)
             if channel:
                 try:
                     await channel.connect()
-                    print("🔁 Bot tự động join lại voice")
+                    print("🔁 Auto rejoin thành công")
                 except Exception as e:
-                    print("❌ Auto rejoin thất bại:", e)
+                    print("❌ Auto rejoin lỗi:", e)
 
-# ================= Run Bot =================
-TOKEN = os.getenv("TOKEN_DISCORD_BOT")
-
-if not TOKEN:
-    raise RuntimeError("❌ TOKEN_DISCORD_BOT chưa được set trong Environment Variables!")
-
-bot.run(TOKEN)
+# ===================== RUN BOT =====================
+bot.run(TOKEN, reconnect=True)
