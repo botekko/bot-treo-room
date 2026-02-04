@@ -23,6 +23,9 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Nhớ phòng voice để auto rejoin
+AUTO_REJOIN_CHANNEL_ID = None
+
 # ================= Events =================
 @bot.event
 async def on_ready():
@@ -32,6 +35,8 @@ async def on_ready():
 # ================= Slash command: /join =================
 @bot.tree.command(name="join", description="Gọi bot vào phòng voice của bạn")
 async def join(interaction: discord.Interaction):
+    global AUTO_REJOIN_CHANNEL_ID
+
     if not interaction.user.voice:
         await interaction.response.send_message(
             "❌ Bạn phải vào phòng voice trước",
@@ -40,26 +45,39 @@ async def join(interaction: discord.Interaction):
         return
 
     channel = interaction.user.voice.channel
+    AUTO_REJOIN_CHANNEL_ID = channel.id  # nhớ phòng này
+
     vc = interaction.guild.voice_client
 
-    if not vc:
-        await channel.connect()
-    elif vc.channel != channel:
-        await vc.move_to(channel)
+    try:
+        if not vc:
+            await channel.connect()
+        elif vc.channel != channel:
+            await vc.move_to(channel)
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Không vào được voice: {e}",
+            ephemeral=True
+        )
+        return
 
     await interaction.response.send_message(
-        f"✅ Bot đang treo ở **{channel.name}**",
+        f"✅ Bot đang treo ở **{channel.name}** (auto rejoin bật)",
         ephemeral=True
     )
 
 # ================= Slash command: /out =================
 @bot.tree.command(name="out", description="Cho bot rời phòng voice")
 async def out(interaction: discord.Interaction):
+    global AUTO_REJOIN_CHANNEL_ID
+
     vc = interaction.guild.voice_client
+    AUTO_REJOIN_CHANNEL_ID = None  # tắt auto rejoin
+
     if vc:
         await vc.disconnect(force=True)
         await interaction.response.send_message(
-            "👋 Bot đã rời phòng voice",
+            "👋 Bot đã rời phòng (auto rejoin tắt)",
             ephemeral=True
         )
     else:
@@ -67,6 +85,24 @@ async def out(interaction: discord.Interaction):
             "❌ Bot không ở phòng nào",
             ephemeral=True
         )
+
+# ================= Auto rejoin khi bị kick =================
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Chỉ xử lý cho chính bot
+    if not bot.user or member.id != bot.user.id:
+        return
+
+    # Nếu bot bị out khỏi voice
+    if before.channel and after.channel is None:
+        if AUTO_REJOIN_CHANNEL_ID:
+            channel = bot.get_channel(AUTO_REJOIN_CHANNEL_ID)
+            if channel:
+                try:
+                    await channel.connect()
+                    print("🔁 Bot tự động join lại voice")
+                except Exception as e:
+                    print("❌ Auto rejoin thất bại:", e)
 
 # ================= Run Bot =================
 bot.run(os.getenv("TOKEN"))
