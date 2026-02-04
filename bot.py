@@ -105,4 +105,9 @@ async def on_voice_state_update(member, before, after):
                     print("❌ Auto rejoin thất bại:", e)
 
 # ================= Run Bot =================
-bot.run(os.getenv("TOKEN"))
+TOKEN = os.getenv("TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("❌ TOKEN chưa được set trong Environment Variables!")
+
+bot.run(TOKEN)
